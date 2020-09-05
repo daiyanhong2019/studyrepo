@@ -1,0 +1,86 @@
+import requests
+from lxml import etree
+import re
+from pymongo import MongoClient
+from pymongo import InsertOne
+
+# TODO:1、每次将表删除重新生成；2、title为字符串；3、内容将数组转为字符串
+class Wangyi:
+
+    def __init__(self):
+        self.url = 'http://news.163.com/'
+        # 需要得到新闻的链接和标题
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"}
+        self.conn = MongoClient("127.0.0.1:27017", maxPoolSize=None)
+        self.db = self.conn.test_news
+        self.myset = self.db.test_wangyi
+
+    def get_url(self):
+        # print(self.url)
+        response = requests.get(self.url,headers=self.headers)
+        html = response.text
+        #print(html)
+        html = etree.HTML(html)
+        urlnews_list = html.xpath('//div[@id="js_top_news"]/div[1]/ul/li/a/@href')
+        # print(urlnews_list)
+
+        return urlnews_list
+    def get_content(self,url):
+        print(url)
+        res = requests.get(url, headers=self.headers)
+        html = res.text
+        html_content = etree.HTML(html)
+        # //div[@id="js_top_news"]/div/h2/a/text()
+        # news_title = html_content.xpath('//div[@id="js_top_news"]/div[1]/ul/li/a/text()')
+        news_contents = ""
+        if url.find('news') >= 0:
+            # 得到新闻的时间
+            news_time = html_content.xpath('//*[@id="epContentLeft"]/div[1]/text()')
+            date_reg_exp = re.compile('\d{4}[-/]\d{2}[-/]\d{2} \d{2}:\d{2}:\d{2}')
+            news_time = date_reg_exp.findall(news_time[0])[0]
+            # print(news_time)
+            # 得到新闻的正文
+            news_content = html_content.xpath('//div[@class="post_body"]/div[@id="endText"]/p/text()')
+            # print(news_content)
+            news_contents = ' '.join(news_content)
+            # for content in news_content:
+            #     print("==========",content)
+            #     news_contents.join(content)
+            #     news_contents. = ' '.join(content)
+            print(news_contents)
+            news_title = html_content.xpath('//div[@id="epContentLeft"]/h1/text()')[0]
+            print(news_title)
+        else:
+            news_time = html_content.xpath('//div[@class="share_box"]/p[@class="time"]/span[1]/text()')[0]
+            # print(news_time)
+            news_content = html_content.xpath('//div[@class="article_box"]/div[@id="content"]/p/text()')
+            # print(news_content)
+            news_contents = ' '.join(news_content)
+            # for content in news_content:
+            #     news_contents.join(content)
+            print(news_contents)
+            news_title = html_content.xpath('//div[@id="contain"]/div/div[2]/h2/text()')[0]
+            print(news_title)
+        return (news_contents,news_time,news_title)
+
+    def insert_db(self,data):
+        print("insert")
+        self.myset.insert_many(data)
+        # my_collection.insert(data)
+
+    def delete(self):
+        print("delete...")
+        self.myset.drop()
+if __name__ == '__main__':
+    wangyi = Wangyi()
+    urls = wangyi.get_url()
+    data = []
+    for url in urls:
+        news_contents, news_time, news_title = wangyi.get_content(url)
+        recode = {'url':url,'news_content':news_contents,'news_time': news_time,'news_title':news_title}
+        data.append(recode)
+    wangyi.delete()
+    wangyi.insert_db(data)
+
+
